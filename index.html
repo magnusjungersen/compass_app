@@ -88,8 +88,12 @@
     #cE { top: 50%; left: 90%; }
     #cW { top: 50%; left: 10%; }
 
-    /* Placeholder needle — shown until compass-needle.svg/png exists */
+    /* Placeholder needle */
     #needle-placeholder {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
       transform-origin: center;
       transition: transform 0.15s ease-out;
     }
@@ -126,7 +130,7 @@
       line-height: 1.8;
       opacity: 0.65;
     }
-    #bearing-display {
+    #distance-display {
       font-size: clamp(20px, 6vw, 32px);
       color: #c8a84a;
       letter-spacing: 0.1em;
@@ -218,7 +222,7 @@
   </button>
 
   <div id="info">
-    <div id="bearing-display">— °</div>
+    <div id="distance-display">— km</div>
   </div>
 
   <script>
@@ -232,7 +236,7 @@
     const statusEl  = document.getElementById('status');
     const needlePH  = document.getElementById('needle-placeholder');
     const needleImg = document.getElementById('needle-img');
-    const bearingEl = document.getElementById('bearing-display');
+    const distanceEl = document.getElementById('distance-display');
     const permBtn   = document.getElementById('permission-btn');
 
     needleImg.onload  = () => { needleImg.style.display = 'block'; needlePH.style.display = 'none'; };
@@ -261,10 +265,16 @@
     if (!navigator.geolocation) {
       setStatus('Geolocation not supported', 'error');
     } else {
+      // getCurrentPosition gets a fast initial fix (uses wifi/cell if GPS cold)
+      navigator.geolocation.getCurrentPosition(onPosition, onGeoError, {
+        enableHighAccuracy: true,
+        timeout: 15000,
+        maximumAge: 10000,
+      });
+      // watchPosition keeps it updated — no timeout so iOS doesn't error between fixes
       navigator.geolocation.watchPosition(onPosition, onGeoError, {
         enableHighAccuracy: true,
-        maximumAge: 3000,
-        timeout: 10000,
+        maximumAge: 5000,
       });
     }
 
@@ -347,7 +357,7 @@
       setStatus('Locating...', '');
     }
 
-    // ── Bearing & render ─────────────────────────────────────────────────────
+    // ── Bearing & distance & render ───────────────────────────────────────────
     function calcBearing(lat1, lng1, lat2, lng2) {
       const toRad = d => d * Math.PI / 180;
       const dLng  = toRad(lng2 - lng1);
@@ -357,11 +367,27 @@
       return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
     }
 
+    function calcDistance(lat1, lng1, lat2, lng2) {
+      const R = 6371000; // Earth radius in metres
+      const toRad = d => d * Math.PI / 180;
+      const dLat = toRad(lat2 - lat1), dLng = toRad(lng2 - lng1);
+      const a = Math.sin(dLat/2)**2 +
+                Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng/2)**2;
+      return R * 2 * Math.asin(Math.sqrt(a));
+    }
+
+    function formatDistance(m) {
+      if (m < 1000) return `${Math.round(m)} m`;
+      if (m < 10000) return `${(m / 1000).toFixed(1)} km`;
+      return `${Math.round(m / 1000)} km`;
+    }
+
     function updateNeedle() {
       if (userLat == null) { setStatus('Waiting for location...', ''); return; }
 
       const bearing = calcBearing(userLat, userLng, TARGET_LAT, TARGET_LNG);
-      bearingEl.textContent = `${Math.round(bearing)}°`;
+      const dist    = calcDistance(userLat, userLng, TARGET_LAT, TARGET_LNG);
+      distanceEl.textContent = formatDistance(dist);
 
       let rotation;
       if (deviceHeading != null) {
