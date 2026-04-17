@@ -133,6 +133,27 @@
       opacity: 1 !important;
     }
 
+    /* ── Music toggle ── */
+    #music-btn {
+      position: fixed;
+      top: 16px;
+      right: 16px;
+      background: transparent;
+      border: 1px solid #6b5a2a;
+      color: #c8a84a;
+      font-size: 18px;
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.2s;
+      z-index: 100;
+    }
+    #music-btn:active { background: rgba(107,90,42,0.3); }
+
     /* ── Permission button ── */
     #permission-btn {
       display: none;
@@ -152,12 +173,15 @@
 </head>
 <body>
 
+  <audio id="bg-music" src="static/Pirater.mp3" loop preload="auto"></audio>
+  <button id="music-btn" title="Toggle music">♪</button>
+
   <div id="status">Initializing...</div>
 
   <div id="compass-wrap">
-    <!-- Background: swap src to "compass-face.png" when ready -->
-    <img id="face-img" src="compass-face.png" alt=""
+    <img id="face-img" src="static/Compass.png" alt=""
          onerror="this.style.display='none'; document.getElementById('face-placeholder').style.display='block';"
+         onload="this.style.display='block'; document.getElementById('face-placeholder').style.display='none';"
          style="display:none" />
     <div id="face-placeholder"></div>
 
@@ -195,7 +219,6 @@
 
   <div id="info">
     <div id="bearing-display">— °</div>
-    <div id="coords-display">Locating...</div>
   </div>
 
   <script>
@@ -206,20 +229,33 @@
 
     // ─────────────────────────────────────────────────────────────────────────
 
-    const statusEl   = document.getElementById('status');
-    const needlePH   = document.getElementById('needle-placeholder');
-    const needleImg  = document.getElementById('needle-img');
-    const bearingEl  = document.getElementById('bearing-display');
-    const coordsEl   = document.getElementById('coords-display');
-    const permBtn    = document.getElementById('permission-btn');
+    const statusEl  = document.getElementById('status');
+    const needlePH  = document.getElementById('needle-placeholder');
+    const needleImg = document.getElementById('needle-img');
+    const bearingEl = document.getElementById('bearing-display');
+    const permBtn   = document.getElementById('permission-btn');
 
-    // Try to show real needle image; fall back to placeholder
     needleImg.onload  = () => { needleImg.style.display = 'block'; needlePH.style.display = 'none'; };
     needleImg.onerror = () => { needleImg.style.display = 'none';  needlePH.style.display = 'flex'; };
-    needleImg.src = needleImg.src; // trigger load attempt
+    needleImg.src = needleImg.src;
 
     let userLat = null, userLng = null;
-    let deviceHeading = null; // degrees clockwise from true north
+    let deviceHeading = null;
+
+    // EMA smoothing state for heading (stored as sin/cos to handle 0°/360° wrap)
+    let hSin = null, hCos = null;
+    const H_ALPHA = 0.15; // lower = smoother but laggier
+
+    // EMA smoothing for GPS
+    const G_ALPHA = 0.3;
+
+    // rAF gate — only recalculate once per frame regardless of event rate
+    let rafPending = false;
+    function scheduleUpdate() {
+      if (rafPending) return;
+      rafPending = true;
+      requestAnimationFrame(() => { rafPending = false; updateNeedle(); });
+    }
 
     // ── Geolocation ──────────────────────────────────────────────────────────
     if (!navigator.geolocation) {
@@ -227,15 +263,18 @@
     } else {
       navigator.geolocation.watchPosition(onPosition, onGeoError, {
         enableHighAccuracy: true,
-        maximumAge: 5000,
+        maximumAge: 3000,
+        timeout: 10000,
       });
     }
 
     function onPosition(pos) {
-      userLat = pos.coords.latitude;
-      userLng = pos.coords.longitude;
-      coordsEl.textContent = `${userLat.toFixed(4)}°, ${userLng.toFixed(4)}°`;
-      updateNeedle();
+      const lat = pos.coords.latitude;
+      const lng = pos.coords.longitude;
+      // EMA smoothing; seed on first fix
+      userLat = userLat == null ? lat : G_ALPHA * lat + (1 - G_ALPHA) * userLat;
+      userLng = userLng == null ? lng : G_ALPHA * lng + (1 - G_ALPHA) * userLng;
+      scheduleUpdate();
     }
 
     function onGeoError(err) {
@@ -243,23 +282,43 @@
     }
 
     // ── Device orientation ────────────────────────────────────────────────────
+    // Prefer deviceorientationabsolute; fall back to deviceorientation only if
+    // absolute never fires — avoids double-firing when both events are dispatched.
+    let usingAbsolute = false;
+
     function startOrientation() {
-      window.addEventListener('deviceorientationabsolute', onOrientation, true);
-      window.addEventListener('deviceorientation',         onOrientation, true);
+      window.addEventListener('deviceorientationabsolute', onAbsoluteOrientation, true);
+      window.addEventListener('deviceorientation', onRelativeOrientation, true);
     }
 
-    function onOrientation(e) {
-      // `alpha` = rotation around Z axis. On absolute events it's true-north referenced.
-      // On non-absolute events it may be arbitrary — we use it anyway as best effort.
-      // iOS gives webkitCompassHeading (clockwise from true north, already corrected).
-      if (e.webkitCompassHeading != null) {
-        deviceHeading = e.webkitCompassHeading;
-      } else if (e.absolute && e.alpha != null) {
-        deviceHeading = (360 - e.alpha) % 360;
-      } else if (e.alpha != null) {
-        deviceHeading = (360 - e.alpha) % 360;
+    function onAbsoluteOrientation(e) {
+      if (e.alpha == null) return;
+      usingAbsolute = true;
+      applyHeading(e.webkitCompassHeading != null
+        ? e.webkitCompassHeading
+        : (360 - e.alpha) % 360);
+    }
+
+    function onRelativeOrientation(e) {
+      // Skip if absolute events are already being received
+      if (usingAbsolute || e.alpha == null) return;
+      applyHeading(e.webkitCompassHeading != null
+        ? e.webkitCompassHeading
+        : (360 - e.alpha) % 360);
+    }
+
+    function applyHeading(raw) {
+      const r = raw * Math.PI / 180;
+      // Seed on first reading, then EMA on sin/cos components
+      if (hSin == null) {
+        hSin = Math.sin(r);
+        hCos = Math.cos(r);
+      } else {
+        hSin = H_ALPHA * Math.sin(r) + (1 - H_ALPHA) * hSin;
+        hCos = H_ALPHA * Math.cos(r) + (1 - H_ALPHA) * hCos;
       }
-      updateNeedle();
+      deviceHeading = (Math.atan2(hSin, hCos) * 180 / Math.PI + 360) % 360;
+      scheduleUpdate();
     }
 
     // iOS 13+ requires explicit permission
@@ -279,47 +338,38 @@
       }
     }
 
-    // Auto-start or show button
     if (typeof DeviceOrientationEvent !== 'undefined' &&
         typeof DeviceOrientationEvent.requestPermission === 'function') {
-      // iOS 13+ — must be triggered by user gesture
       permBtn.style.display = 'block';
       setStatus('Tap the button to enable compass', '');
     } else {
-      // Android / desktop — just start
       startOrientation();
       setStatus('Locating...', '');
     }
 
-    // ── Bearing calculation ───────────────────────────────────────────────────
+    // ── Bearing & render ─────────────────────────────────────────────────────
     function calcBearing(lat1, lng1, lat2, lng2) {
       const toRad = d => d * Math.PI / 180;
       const dLng  = toRad(lng2 - lng1);
-      const φ1    = toRad(lat1), φ2 = toRad(lat2);
-      const y     = Math.sin(dLng) * Math.cos(φ2);
-      const x     = Math.cos(φ1) * Math.sin(φ2) -
-                    Math.sin(φ1) * Math.cos(φ2) * Math.cos(dLng);
+      const φ1 = toRad(lat1), φ2 = toRad(lat2);
+      const y = Math.sin(dLng) * Math.cos(φ2);
+      const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(dLng);
       return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
     }
 
     function updateNeedle() {
-      if (userLat == null) {
-        setStatus('Waiting for location...', '');
-        return;
-      }
+      if (userLat == null) { setStatus('Waiting for location...', ''); return; }
 
       const bearing = calcBearing(userLat, userLng, TARGET_LAT, TARGET_LNG);
       bearingEl.textContent = `${Math.round(bearing)}°`;
 
       let rotation;
       if (deviceHeading != null) {
-        // Rotate needle so it points toward target accounting for device facing direction
         rotation = bearing - deviceHeading;
         setStatus('Compass active', 'ok');
       } else {
-        // No orientation data — point toward bearing from north-up
         rotation = bearing;
-        setStatus('No orientation sensor — showing north-up bearing', '');
+        setStatus('No orientation sensor — north-up bearing', '');
       }
 
       const transform = `rotate(${rotation}deg)`;
@@ -328,9 +378,35 @@
     }
 
     function setStatus(msg, type) {
-      statusEl.textContent  = msg;
-      statusEl.className    = type || '';
+      statusEl.textContent = msg;
+      statusEl.className   = type || '';
     }
+
+    // ── Music ─────────────────────────────────────────────────────────────────
+    const audio     = document.getElementById('bg-music');
+    const musicBtn  = document.getElementById('music-btn');
+    let musicOn     = true;
+    let audioUnlocked = false;
+
+    function unlockAndPlay() {
+      if (audioUnlocked) return;
+      audioUnlocked = true;
+      if (musicOn) audio.play().catch(() => {});
+    }
+
+    // Start on first user interaction (required by mobile browsers)
+    document.addEventListener('pointerdown', unlockAndPlay, { once: true });
+
+    musicBtn.addEventListener('click', () => {
+      musicOn = !musicOn;
+      musicBtn.textContent = musicOn ? '♪' : '♩';
+      if (musicOn) {
+        audioUnlocked = true;
+        audio.play().catch(() => {});
+      } else {
+        audio.pause();
+      }
+    });
   </script>
 </body>
 </html>
