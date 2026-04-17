@@ -259,10 +259,6 @@
     <div id="center-dot"></div>
   </div>
 
-  <button id="permission-btn" onclick="requestOrientationPermission()">
-    Allow Compass Access
-  </button>
-
   <div id="info">
     <div id="distance-display">— km</div>
   </div>
@@ -279,7 +275,6 @@
     const needlePH  = document.getElementById('needle-placeholder');
     const needleImg = document.getElementById('needle-img');
     const distanceEl = document.getElementById('distance-display');
-    const permBtn   = document.getElementById('permission-btn');
 
     needleImg.onload  = () => { needleImg.style.display = 'block'; needlePH.style.display = 'none'; };
     needleImg.onerror = () => { needleImg.style.display = 'none';  needlePH.style.display = 'flex'; };
@@ -373,31 +368,23 @@
       scheduleUpdate();
     }
 
-    // iOS 13+ requires explicit permission
+    // iOS 13+ requires explicit permission, triggered from a user gesture.
+    // We call this from the intro tap so there's no extra button to press.
     function requestOrientationPermission() {
-      if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+      if (typeof DeviceOrientationEvent !== 'undefined' &&
+          typeof DeviceOrientationEvent.requestPermission === 'function') {
         DeviceOrientationEvent.requestPermission()
           .then(state => {
-            if (state === 'granted') {
-              permBtn.style.display = 'none';
-              startOrientation();
-              setStatus('Compass active', 'ok');
-            } else {
-              setStatus('Orientation permission denied', 'error');
-            }
+            if (state === 'granted') startOrientation();
+            else setStatus('Orientation permission denied', 'error');
           })
           .catch(err => setStatus(`Permission error: ${err}`, 'error'));
+      } else {
+        startOrientation();
       }
     }
 
-    if (typeof DeviceOrientationEvent !== 'undefined' &&
-        typeof DeviceOrientationEvent.requestPermission === 'function') {
-      permBtn.style.display = 'block';
-      setStatus('Tap the button to enable compass', '');
-    } else {
-      startOrientation();
-      setStatus('Locating...', '');
-    }
+    setStatus('Locating...', '');
 
     // ── Bearing & distance & render ───────────────────────────────────────────
     function calcBearing(lat1, lng1, lat2, lng2) {
@@ -495,6 +482,7 @@
       introStarted = true;
       introStart.classList.add('hidden');
       startGeolocation();
+      requestOrientationPermission();
       introVideo.play().catch(finishIntro);
     }
 
