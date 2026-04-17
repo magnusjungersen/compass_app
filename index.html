@@ -158,6 +158,43 @@
     }
     #music-btn:active { background: rgba(107,90,42,0.3); }
 
+    /* ── Intro video ── */
+    #intro-overlay {
+      position: fixed;
+      inset: 0;
+      background: #000;
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: opacity 0.4s ease-out;
+    }
+    #intro-overlay.hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+    #intro-video {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+    #intro-start {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #c8a84a;
+      font-family: 'Georgia', serif;
+      font-size: clamp(16px, 4vw, 22px);
+      letter-spacing: 0.15em;
+      cursor: pointer;
+      background: #000;
+      text-align: center;
+      padding: 24px;
+    }
+    #intro-start.hidden { display: none; }
+
     /* ── Permission button ── */
     #permission-btn {
       display: none;
@@ -176,6 +213,11 @@
   </style>
 </head>
 <body>
+
+  <div id="intro-overlay">
+    <video id="intro-video" src="static/Skeleton.mp4" playsinline preload="auto"></video>
+    <div id="intro-start">TAP TO BEGIN</div>
+  </div>
 
   <audio id="bg-music" src="static/Pirater.mp3" loop preload="auto"></audio>
   <button id="music-btn" title="Toggle music">♪</button>
@@ -413,15 +455,15 @@
     const musicBtn  = document.getElementById('music-btn');
     let musicOn     = true;
     let audioUnlocked = false;
+    let introDone   = false;
 
     function unlockAndPlay() {
-      if (audioUnlocked) return;
+      if (audioUnlocked || !introDone) return;
       audioUnlocked = true;
       if (musicOn) audio.play().catch(() => {});
     }
 
-    // Start on first user interaction (required by mobile browsers)
-    document.addEventListener('pointerdown', unlockAndPlay, { once: true });
+    document.addEventListener('pointerdown', unlockAndPlay);
 
     musicBtn.addEventListener('click', () => {
       musicOn = !musicOn;
@@ -433,6 +475,33 @@
         audio.pause();
       }
     });
+
+    // ── Intro video ───────────────────────────────────────────────────────────
+    const introOverlay = document.getElementById('intro-overlay');
+    const introVideo   = document.getElementById('intro-video');
+    const introStart   = document.getElementById('intro-start');
+    let introStarted   = false;
+
+    function finishIntro() {
+      if (introDone) return;
+      introDone = true;
+      introOverlay.classList.add('hidden');
+      setTimeout(() => introOverlay.remove(), 500);
+      if (musicOn) audio.play().catch(() => {});
+    }
+
+    function startIntro() {
+      if (introStarted) { finishIntro(); return; }
+      introStarted = true;
+      introStart.classList.add('hidden');
+      // Unlock audio while we're inside the user gesture so iOS allows play() later
+      audio.play().then(() => { audio.pause(); audio.currentTime = 0; audioUnlocked = true; }).catch(() => {});
+      introVideo.play().catch(finishIntro);
+    }
+
+    introVideo.addEventListener('ended', finishIntro);
+    introVideo.addEventListener('error', finishIntro);
+    introOverlay.addEventListener('click', startIntro);
   </script>
 </body>
 </html>
