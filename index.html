@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Compass</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0a0a0f;
+      color: #e8d5a3;
+      font-family: 'Georgia', serif;
+      height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: space-between;
+      overflow: hidden;
+      padding: 24px 16px;
+      user-select: none;
+    }
+
+    /* ── Status bar ── */
+    #status {
+      font-size: 13px;
+      letter-spacing: 0.08em;
+      opacity: 0.7;
+      text-align: center;
+      min-height: 36px;
+    }
+    #status.error { color: #e07060; opacity: 1; }
+    #status.ok    { color: #90c090; opacity: 1; }
+
+    /* ── Compass stage ── */
+    #compass-wrap {
+      position: relative;
+      width: min(80vw, 80vh);
+      height: min(80vw, 80vh);
+      flex-shrink: 0;
+    }
+
+    #compass-wrap img,
+    #compass-wrap .placeholder {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+
+    /* Placeholder face — shown until compass-face.png exists */
+    #face-placeholder {
+      border-radius: 50%;
+      background: radial-gradient(circle at 50% 50%,
+        #1c1a12 0%, #2a2510 60%, #1a1508 100%);
+      box-shadow:
+        0 0 0 6px #6b5a2a,
+        0 0 0 10px #3a3010,
+        0 0 40px rgba(0,0,0,0.8);
+    }
+
+    /* Cardinal tick marks on placeholder */
+    #face-placeholder::before {
+      content: '';
+      position: absolute;
+      inset: 8%;
+      border-radius: 50%;
+      border: 2px solid rgba(180,150,60,0.3);
+    }
+
+    /* Cardinal labels */
+    #cardinal-labels {
+      position: absolute;
+      inset: 0;
+      border-radius: 50%;
+    }
+    .cardinal {
+      position: absolute;
+      font-size: clamp(12px, 3vw, 18px);
+      font-weight: bold;
+      letter-spacing: 0.05em;
+      color: #c8a84a;
+      transform: translate(-50%, -50%);
+    }
+    #cN { top: 10%; left: 50%; }
+    #cS { top: 90%; left: 50%; }
+    #cE { top: 50%; left: 90%; }
+    #cW { top: 50%; left: 10%; }
+
+    /* Placeholder needle — shown until compass-needle.svg/png exists */
+    #needle-placeholder {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transform-origin: center;
+      transition: transform 0.15s ease-out;
+    }
+    #needle-placeholder svg {
+      width: 35%;
+      height: 100%;
+      overflow: visible;
+    }
+
+    /* Real needle image (hidden until file exists) */
+    #needle-img {
+      transform-origin: center;
+      transition: transform 0.15s ease-out;
+      display: none; /* shown by JS once loaded */
+    }
+
+    /* Center dot */
+    #center-dot {
+      position: absolute;
+      width: 5%;
+      height: 5%;
+      background: radial-gradient(circle, #c8a84a, #6b5a2a);
+      border-radius: 50%;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      box-shadow: 0 0 8px rgba(200,168,74,0.6);
+      z-index: 10;
+    }
+
+    /* ── Info panel ── */
+    #info {
+      text-align: center;
+      font-size: 13px;
+      letter-spacing: 0.06em;
+      line-height: 1.8;
+      opacity: 0.65;
+    }
+    #bearing-display {
+      font-size: clamp(20px, 6vw, 32px);
+      color: #c8a84a;
+      letter-spacing: 0.1em;
+      opacity: 1 !important;
+    }
+
+    /* ── Permission button ── */
+    #permission-btn {
+      display: none;
+      padding: 14px 32px;
+      background: transparent;
+      border: 1px solid #6b5a2a;
+      color: #c8a84a;
+      font-family: 'Georgia', serif;
+      font-size: 15px;
+      letter-spacing: 0.1em;
+      cursor: pointer;
+      border-radius: 2px;
+      transition: background 0.2s;
+    }
+    #permission-btn:active { background: rgba(107,90,42,0.3); }
+  </style>
+</head>
+<body>
+
+  <div id="status">Initializing...</div>
+
+  <div id="compass-wrap">
+    <!-- Background: swap src to "compass-face.png" when ready -->
+    <img id="face-img" src="compass-face.png" alt=""
+         onerror="this.style.display='none'; document.getElementById('face-placeholder').style.display='block';"
+         style="display:none" />
+    <div id="face-placeholder"></div>
+
+    <div id="cardinal-labels">
+      <span class="cardinal" id="cN">N</span>
+      <span class="cardinal" id="cS">S</span>
+      <span class="cardinal" id="cE">E</span>
+      <span class="cardinal" id="cW">W</span>
+    </div>
+
+    <!-- Rotating layer: swap src to "compass-needle.svg" (or .png) when ready -->
+    <!-- Image must point UP (north) at 0° rotation, centered in a square canvas -->
+    <img id="needle-img" src="compass-needle.svg" alt=""
+         onerror="this.style.display='none'; document.getElementById('needle-placeholder').style.display='flex';"
+         style="display:none" />
+
+    <!-- Placeholder needle (two-tone arrow) -->
+    <div id="needle-placeholder">
+      <svg viewBox="-20 -120 40 240" xmlns="http://www.w3.org/2000/svg">
+        <!-- North half — red -->
+        <polygon points="0,-110 10,0 -10,0" fill="#c0392b" />
+        <!-- South half — cream -->
+        <polygon points="0,110 10,0 -10,0" fill="#e8d5a3" />
+        <!-- Center ring -->
+        <circle cx="0" cy="0" r="8" fill="#1c1a12" stroke="#6b5a2a" stroke-width="2"/>
+      </svg>
+    </div>
+
+    <div id="center-dot"></div>
+  </div>
+
+  <button id="permission-btn" onclick="requestOrientationPermission()">
+    Allow Compass Access
+  </button>
+
+  <div id="info">
+    <div id="bearing-display">— °</div>
+    <div id="coords-display">Locating...</div>
+  </div>
+
+  <script>
+    // ── TARGET COORDINATES ────────────────────────────────────────────────────
+    // Change these to wherever the compass should always point
+    const TARGET_LAT =  51.5074;   // example: London
+    const TARGET_LNG =  -0.1278;
+
+    // ─────────────────────────────────────────────────────────────────────────
+
+    const statusEl   = document.getElementById('status');
+    const needlePH   = document.getElementById('needle-placeholder');
+    const needleImg  = document.getElementById('needle-img');
+    const bearingEl  = document.getElementById('bearing-display');
+    const coordsEl   = document.getElementById('coords-display');
+    const permBtn    = document.getElementById('permission-btn');
+
+    // Try to show real needle image; fall back to placeholder
+    needleImg.onload  = () => { needleImg.style.display = 'block'; needlePH.style.display = 'none'; };
+    needleImg.onerror = () => { needleImg.style.display = 'none';  needlePH.style.display = 'flex'; };
+    needleImg.src = needleImg.src; // trigger load attempt
+
+    let userLat = null, userLng = null;
+    let deviceHeading = null; // degrees clockwise from true north
+
+    // ── Geolocation ──────────────────────────────────────────────────────────
+    if (!navigator.geolocation) {
+      setStatus('Geolocation not supported', 'error');
+    } else {
+      navigator.geolocation.watchPosition(onPosition, onGeoError, {
+        enableHighAccuracy: true,
+        maximumAge: 5000,
+      });
+    }
+
+    function onPosition(pos) {
+      userLat = pos.coords.latitude;
+      userLng = pos.coords.longitude;
+      coordsEl.textContent = `${userLat.toFixed(4)}°, ${userLng.toFixed(4)}°`;
+      updateNeedle();
+    }
+
+    function onGeoError(err) {
+      setStatus(`Location error: ${err.message}`, 'error');
+    }
+
+    // ── Device orientation ────────────────────────────────────────────────────
+    function startOrientation() {
+      window.addEventListener('deviceorientationabsolute', onOrientation, true);
+      window.addEventListener('deviceorientation',         onOrientation, true);
+    }
+
+    function onOrientation(e) {
+      // `alpha` = rotation around Z axis. On absolute events it's true-north referenced.
+      // On non-absolute events it may be arbitrary — we use it anyway as best effort.
+      // iOS gives webkitCompassHeading (clockwise from true north, already corrected).
+      if (e.webkitCompassHeading != null) {
+        deviceHeading = e.webkitCompassHeading;
+      } else if (e.absolute && e.alpha != null) {
+        deviceHeading = (360 - e.alpha) % 360;
+      } else if (e.alpha != null) {
+        deviceHeading = (360 - e.alpha) % 360;
+      }
+      updateNeedle();
+    }
+
+    // iOS 13+ requires explicit permission
+    function requestOrientationPermission() {
+      if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+        DeviceOrientationEvent.requestPermission()
+          .then(state => {
+            if (state === 'granted') {
+              permBtn.style.display = 'none';
+              startOrientation();
+              setStatus('Compass active', 'ok');
+            } else {
+              setStatus('Orientation permission denied', 'error');
+            }
+          })
+          .catch(err => setStatus(`Permission error: ${err}`, 'error'));
+      }
+    }
+
+    // Auto-start or show button
+    if (typeof DeviceOrientationEvent !== 'undefined' &&
+        typeof DeviceOrientationEvent.requestPermission === 'function') {
+      // iOS 13+ — must be triggered by user gesture
+      permBtn.style.display = 'block';
+      setStatus('Tap the button to enable compass', '');
+    } else {
+      // Android / desktop — just start
+      startOrientation();
+      setStatus('Locating...', '');
+    }
+
+    // ── Bearing calculation ───────────────────────────────────────────────────
+    function calcBearing(lat1, lng1, lat2, lng2) {
+      const toRad = d => d * Math.PI / 180;
+      const dLng  = toRad(lng2 - lng1);
+      const φ1    = toRad(lat1), φ2 = toRad(lat2);
+      const y     = Math.sin(dLng) * Math.cos(φ2);
+      const x     = Math.cos(φ1) * Math.sin(φ2) -
+                    Math.sin(φ1) * Math.cos(φ2) * Math.cos(dLng);
+      return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+    }
+
+    function updateNeedle() {
+      if (userLat == null) {
+        setStatus('Waiting for location...', '');
+        return;
+      }
+
+      const bearing = calcBearing(userLat, userLng, TARGET_LAT, TARGET_LNG);
+      bearingEl.textContent = `${Math.round(bearing)}°`;
+
+      let rotation;
+      if (deviceHeading != null) {
+        // Rotate needle so it points toward target accounting for device facing direction
+        rotation = bearing - deviceHeading;
+        setStatus('Compass active', 'ok');
+      } else {
+        // No orientation data — point toward bearing from north-up
+        rotation = bearing;
+        setStatus('No orientation sensor — showing north-up bearing', '');
+      }
+
+      const transform = `rotate(${rotation}deg)`;
+      needlePH.style.transform  = transform;
+      needleImg.style.transform = transform;
+    }
+
+    function setStatus(msg, type) {
+      statusEl.textContent  = msg;
+      statusEl.className    = type || '';
+    }
+  </script>
+</body>
+</html>
