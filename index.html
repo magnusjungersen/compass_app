@@ -90,16 +90,12 @@
 
     /* Placeholder needle — shown until compass-needle.svg/png exists */
     #needle-placeholder {
-      display: flex;
-      align-items: center;
-      justify-content: center;
       transform-origin: center;
       transition: transform 0.15s ease-out;
     }
     #needle-placeholder svg {
-      width: 35%;
+      width: 100%;
       height: 100%;
-      overflow: visible;
     }
 
     /* Real needle image (hidden until file exists) */
@@ -180,13 +176,13 @@
 
     <!-- Placeholder needle (two-tone arrow) -->
     <div id="needle-placeholder">
-      <svg viewBox="-20 -120 40 240" xmlns="http://www.w3.org/2000/svg">
-        <!-- North half — red -->
-        <polygon points="0,-110 10,0 -10,0" fill="#c0392b" />
+      <svg viewBox="-50 -50 100 100" xmlns="http://www.w3.org/2000/svg">
+        <!-- North half — red, points up -->
+        <polygon points="0,-44 7,0 -7,0" fill="#c0392b" />
         <!-- South half — cream -->
-        <polygon points="0,110 10,0 -10,0" fill="#e8d5a3" />
+        <polygon points="0,44 7,0 -7,0" fill="#e8d5a3" />
         <!-- Center ring -->
-        <circle cx="0" cy="0" r="8" fill="#1c1a12" stroke="#6b5a2a" stroke-width="2"/>
+        <circle cx="0" cy="0" r="5" fill="#1c1a12" stroke="#6b5a2a" stroke-width="1.5"/>
       </svg>
     </div>
 
@@ -205,8 +201,8 @@
   <script>
     // ── TARGET COORDINATES ────────────────────────────────────────────────────
     // Change these to wherever the compass should always point
-    const TARGET_LAT =  51.5074;   // example: London
-    const TARGET_LNG =  -0.1278;
+    const TARGET_LAT =  55.6852321;
+    const TARGET_LNG =  12.5520005;
 
     // ─────────────────────────────────────────────────────────────────────────
 
