@@ -158,6 +158,27 @@
     }
     #music-btn:active { background: rgba(107,90,42,0.3); }
 
+    /* ── Intro video ── */
+    #intro-overlay {
+      position: fixed;
+      inset: 0;
+      background: #000;
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: opacity 0.4s ease-out;
+    }
+    #intro-overlay.hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+    #intro-video {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+
     /* ── Permission button ── */
     #permission-btn {
       display: none;
@@ -176,6 +197,10 @@
   </style>
 </head>
 <body>
+
+  <div id="intro-overlay">
+    <video id="intro-video" src="static/Skeleton.mp4" playsinline preload="auto"></video>
+  </div>
 
   <audio id="bg-music" src="static/Pirater.mp3" loop preload="auto"></audio>
   <button id="music-btn" title="Toggle music">♪</button>
@@ -413,15 +438,15 @@
     const musicBtn  = document.getElementById('music-btn');
     let musicOn     = true;
     let audioUnlocked = false;
+    let introDone   = false;
 
     function unlockAndPlay() {
-      if (audioUnlocked) return;
+      if (audioUnlocked || !introDone) return;
       audioUnlocked = true;
       if (musicOn) audio.play().catch(() => {});
     }
 
-    // Start on first user interaction (required by mobile browsers)
-    document.addEventListener('pointerdown', unlockAndPlay, { once: true });
+    document.addEventListener('pointerdown', unlockAndPlay);
 
     musicBtn.addEventListener('click', () => {
       musicOn = !musicOn;
@@ -433,6 +458,31 @@
         audio.pause();
       }
     });
+
+    // ── Intro video ───────────────────────────────────────────────────────────
+    const introOverlay = document.getElementById('intro-overlay');
+    const introVideo   = document.getElementById('intro-video');
+
+    function finishIntro() {
+      if (introDone) return;
+      introDone = true;
+      introOverlay.classList.add('hidden');
+      setTimeout(() => introOverlay.remove(), 500);
+      if (musicOn) audio.play().catch(() => {});
+    }
+
+    introVideo.addEventListener('ended', finishIntro);
+    introVideo.addEventListener('error', finishIntro);
+
+    // Try unmuted autoplay first; if the browser blocks it, retry muted so the
+    // video still plays automatically and the app still advances on its own.
+    introVideo.play().catch(() => {
+      introVideo.muted = true;
+      introVideo.play().catch(finishIntro);
+    });
+
+    // Tap the video to skip the intro
+    introOverlay.addEventListener('click', finishIntro);
   </script>
 </body>
 </html>
