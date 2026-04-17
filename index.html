@@ -304,16 +304,16 @@
     }
 
     // ── Geolocation ──────────────────────────────────────────────────────────
-    if (!navigator.geolocation) {
-      setStatus('Geolocation not supported', 'error');
-    } else {
-      // getCurrentPosition gets a fast initial fix (uses wifi/cell if GPS cold)
-      navigator.geolocation.getCurrentPosition(onPosition, onGeoError, {
-        enableHighAccuracy: true,
-        timeout: 15000,
-        maximumAge: 10000,
-      });
-      // watchPosition keeps it updated — no timeout so iOS doesn't error between fixes
+    // iOS Safari prompts per call, so we only use watchPosition (one prompt,
+    // and it fires the first fix immediately after the user grants access).
+    let geoStarted = false;
+    function startGeolocation() {
+      if (geoStarted) return;
+      geoStarted = true;
+      if (!navigator.geolocation) {
+        setStatus('Geolocation not supported', 'error');
+        return;
+      }
       navigator.geolocation.watchPosition(onPosition, onGeoError, {
         enableHighAccuracy: true,
         maximumAge: 5000,
@@ -494,6 +494,7 @@
       if (introStarted) { finishIntro(); return; }
       introStarted = true;
       introStart.classList.add('hidden');
+      startGeolocation();
       introVideo.play().catch(finishIntro);
     }
 
