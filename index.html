@@ -178,6 +178,22 @@
       height: 100%;
       object-fit: contain;
     }
+    #intro-start {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #c8a84a;
+      font-family: 'Georgia', serif;
+      font-size: clamp(16px, 4vw, 22px);
+      letter-spacing: 0.15em;
+      cursor: pointer;
+      background: #000;
+      text-align: center;
+      padding: 24px;
+    }
+    #intro-start.hidden { display: none; }
 
     /* ── Permission button ── */
     #permission-btn {
@@ -200,6 +216,7 @@
 
   <div id="intro-overlay">
     <video id="intro-video" src="static/Skeleton.mp4" playsinline preload="auto"></video>
+    <div id="intro-start">TAP TO BEGIN</div>
   </div>
 
   <audio id="bg-music" src="static/Pirater.mp3" loop preload="auto"></audio>
@@ -462,6 +479,8 @@
     // ── Intro video ───────────────────────────────────────────────────────────
     const introOverlay = document.getElementById('intro-overlay');
     const introVideo   = document.getElementById('intro-video');
+    const introStart   = document.getElementById('intro-start');
+    let introStarted   = false;
 
     function finishIntro() {
       if (introDone) return;
@@ -471,18 +490,16 @@
       if (musicOn) audio.play().catch(() => {});
     }
 
+    function startIntro() {
+      if (introStarted) { finishIntro(); return; }
+      introStarted = true;
+      introStart.classList.add('hidden');
+      introVideo.play().catch(finishIntro);
+    }
+
     introVideo.addEventListener('ended', finishIntro);
     introVideo.addEventListener('error', finishIntro);
-
-    // Try unmuted autoplay first; if the browser blocks it, retry muted so the
-    // video still plays automatically and the app still advances on its own.
-    introVideo.play().catch(() => {
-      introVideo.muted = true;
-      introVideo.play().catch(finishIntro);
-    });
-
-    // Tap the video to skip the intro
-    introOverlay.addEventListener('click', finishIntro);
+    introOverlay.addEventListener('click', startIntro);
   </script>
 </body>
 </html>
